@@ -1,0 +1,4 @@
+*.o
+threadpool
+peda*
+.git_history
