@@ -1,4 +1,4 @@
 *.o
 threadpool
 peda*
-.git_history
+.gdb_history
