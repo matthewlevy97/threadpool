@@ -4,8 +4,13 @@ static struct thread_pool pool;
 static unsigned int threadID;
 
 static void drop_thread();
+static void cleanup_dead_threads();
 
 int pool_init(unsigned int threads) {
+#ifdef DEBUG
+	printf("[*] Thread pool init\n");
+#endif
+	
 	// Initialize threadID
 	threadID = 0;
 	
@@ -16,17 +21,9 @@ int pool_init(unsigned int threads) {
 	
 	// Init job queue
 	queue_init();
-	
-	// Setup mutex
-	if(pthread_mutex_init(&(pool.lock), NULL)) {
-#ifdef DEBUG
-		perror("[pool_init] pthread_mutex_init failed\n");
-#endif
-		goto mutex_init_failed;
-	}
-	
+		
 	// Setup initial threads
-	for(;threads--;)
+	while(threads--)
 		if(pool_create_thread()) {
 #ifdef DEBUG
 			perror("[pool_init] pool_create_thread() failed\n");
@@ -36,30 +33,24 @@ int pool_init(unsigned int threads) {
 	
 	goto success;
 thread_creation_failed:
-	while(pool.threads) drop_thread();
-mutex_init_failed:
+	while(pool.pool_threads) drop_thread();
 	queue_destroy();
 	return -1;
 success:
 	return 0;
 }
 void pool_destroy() {
+#ifdef DEBUG
+	printf("[*] Thread pool destroy\n");
+#endif
+	
 	// Destroy threads
-	while(pool.threads) drop_thread();
+	while(pool.pool_threads) drop_thread();
+	cleanup_dead_threads();
 	free(pool.threads);
 	
 	// Destroy job_queue
-	queue_destroy();
-	
-	// Destroy thread lock
-#ifdef DEBUG
-	if(pthread_mutex_destroy(&(pool.lock))) {
-		perror("[pool_destroy] pthread_mutex_destroy() failed\n");
-	}
-#else
-	pthread_mutex_destroy(&(pool.lock));
-#endif
-	
+	queue_destroy();	
 }
 
 /**
@@ -67,11 +58,11 @@ Creates a new thread and adds it to the thread pool
 */
 int pool_create_thread() {
 	struct thread_info * thread;
-	struct thread_info * ptr;
+	struct thread_info ** ptr;
 	
 	// Resize pool
 	if(pool.pool_threads >= pool.pool_size) {
-		ptr = realloc(pool.threads, (pool.pool_threads + 5) * sizeof(struct thread_info));
+		ptr = realloc(pool.threads, (pool.pool_threads + 5) * sizeof(struct thread_info *));
 		if(!ptr) {
 			// realloc failed
 #ifdef DEBUG
@@ -79,14 +70,31 @@ int pool_create_thread() {
 #endif	
 			goto realloc_failed;
 		}
-		pool.pool_size = pool.pool_threads + 5;
 		pool.threads = ptr;
+		
+		// Create new threads and add to pool
+		do {
+			thread = malloc(sizeof(struct thread_info));
+			if(!thread) {
+#ifdef DEBUG
+				perror("[pool_create_thread] malloc failed\n");
+#endif
+				goto malloc_failed;
+			}
+			// Wipe thread data
+			memset(thread, 0, sizeof(struct thread_info));
+			
+			// Needed to allow for cleanup of un-used thread handles
+			thread->status = THREAD_STATUS_EXITED;
+			
+			pool.threads[pool.pool_size++] = thread;
+		} while(pool.pool_size < pool.pool_threads + 5);
 	}
 	
 	// Create new thread_info
-	thread = &pool.threads[pool.pool_threads];
+	thread = pool.threads[pool.pool_threads];
 	thread->threadID = threadID;
-	thread->status   = THREAD_STATUS_STOPPED;
+	thread->status   = THREAD_STATUS_RUNNING;
 	if(pthread_create(&(thread->thread), NULL, &thread_init, thread)) {
 		// Failed to create thread
 #ifdef DEBUG
@@ -95,20 +103,13 @@ int pool_create_thread() {
 		goto pthread_create_failed;
 	}
 	
-	// Detach thread
-#ifdef DEBUG
-	if(pthread_detach(thread->thread))
-		perror("[pool_create_thread] pthread_detach() failed\n");
-#else
-	pthread_detach(thread->thread);
-#endif
-	
 	// Increase counters
 	threadID++;
 	pool.pool_threads++;
 	
 	goto success;
 pthread_create_failed:
+malloc_failed:
 realloc_failed:
 	return -1;
 success:
@@ -130,24 +131,70 @@ void pool_add_job(struct job_info job) {
 	Drops the last thread in the list from the pool
 */
 static void drop_thread() {
+	struct thread_info * thread;
+	
 	// No threads to drop
-	if(!(pool.threads && pool.pool_threads)) {
-		pool.threads = NULL;
+	if(!(pool.threads[0] && pool.pool_threads)) {
 		return;
 	}
 	
-	// Set thread status to stop
-	(pool.threads[pool.pool_threads]).status = THREAD_STATUS_STOPPED;
+	// Get last thread
+	thread = pool.threads[--pool.pool_threads];
 	
-	// Descrease pool_threads counter
-	pool.pool_threads--;
-	if(!pool.pool_threads)
-		pool.threads = NULL;
+	// Set thread status to stop
+	thread->status = THREAD_STATUS_STOPPED;
+}
+
+/**
+	Remove all exited threads and frees resources
+*/
+static void cleanup_dead_threads() {
+	unsigned int i;
+	for(i = 0; i < pool.pool_size; i++) {
+		if(pool.threads[i] && pool.threads[i]->status == THREAD_STATUS_EXITED) {
+			pthread_join(pool.threads[i]->thread, NULL);
+			free(pool.threads[i]);
+			pool.threads[i] = NULL;
+		}
+	}
+}
+
+/**
+	Simple testing function
+*/
+struct tester_arg {
+	int d;
+};
+void * tester(void * arg) {
+	sleep(1);
+	printf("d=%d\n", ((struct tester_arg*)arg)->d);
+	fflush(stdout);
+	return NULL;
 }
 
 int main(int argc, char ** argv) {
-	pool_init(100);
-	sleep(1);
+	struct job_info job;
+	int i;
+	
+	job.func = tester;
+	job.arg  = NULL;
+	
+	pool_init(5);
+	
+	// Populate job queue
+	for(i = 0; i < 300; i++) {
+		job.arg = malloc(sizeof(struct tester_arg));
+		((struct tester_arg*)job.arg)->d = i;
+		pool_add_job(job);
+	}
+	
+	// Add 15 threads
+	for(i = 0; i < 45; i++)
+		pool_create_thread();
+	
+	while(queue_size() > 0);
+	
+	printf("EXITING: %d", queue_size());
 	pool_destroy();
 	sleep(1);
 }

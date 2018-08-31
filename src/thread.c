@@ -1,13 +1,14 @@
 #include "thread.h"
 
-static int test = 0;
-
 static void execute(struct thread_info * self);
 
 void * thread_init(void * arg) {
 	execute(arg);
 	
-	pthread_exit((void*)0);
+	// If we need to say that we are exiting
+	((struct thread_info *)arg)->status = THREAD_STATUS_EXITED;
+	
+	pthread_exit(NULL);
 }
 
 static void execute(struct thread_info * self) {

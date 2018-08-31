@@ -1,4 +1,5 @@
 *.o
+*.swp
 threadpool
 peda*
 .gdb_history

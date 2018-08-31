@@ -15,8 +15,7 @@
 struct thread_pool {
 	unsigned int          pool_size;
 	unsigned int          pool_threads;
-	struct thread_info *  threads;
-	pthread_mutex_t       lock;
+	struct thread_info ** threads;
 };
 
 int pool_init(unsigned int threads);
@@ -25,6 +24,6 @@ void pool_destroy();
 int pool_create_thread();
 int pool_thread_count();
 
-void pool_add_job();
+void pool_add_job(struct job_info job);
 
 #endif

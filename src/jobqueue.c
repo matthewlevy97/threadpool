@@ -3,6 +3,10 @@
 struct job_queue queue;
 
 int queue_init() {
+#ifdef DEBUG
+	printf("[*] Queue Init\n");
+#endif
+	
 	queue.num_jobs = 0;
 	queue.head     = NULL;
 	queue.tail     = NULL;
@@ -17,6 +21,9 @@ int queue_init() {
 	return 0;
 }
 void queue_destroy() {
+#ifdef DEBUG
+	printf("[*] Destroying Queue");
+#endif
 	// Clear the queue
 	queue_clear();
 	
@@ -41,15 +48,27 @@ void queue_insert(struct job_info * job) {
 	entry->next = NULL;
 	memcpy(&(entry->job), job, sizeof(struct job_info));
 	
+	// Lock
+	pthread_mutex_lock(&(queue.lock));
+	
 	// Insert job_entry at tail (end) of queue
 	if(queue.tail) {
 		(queue.tail)->next = entry;
 	} else {
 		// This is the first entry
-		(queue.head) = entry;
-		(queue.tail) = entry;
+		queue.head = entry;
 	}
+	
+	// Add element to the tail
+	queue.tail = entry;
+	
+	// Increase job count
+	queue.num_jobs++;
+	
+	// Unlock
+	pthread_mutex_unlock(&(queue.lock));
 }
+
 /**
 	Returns first job in queue
 	Returns NULL if queue is empty
@@ -59,6 +78,8 @@ struct job_info * queue_get() {
 	struct job_entry * head;
 	struct job_info  * job;
 	
+	// Lock
+	pthread_mutex_lock(&(queue.lock));
 	head = queue.head;
 	job  = NULL;
 	
@@ -80,6 +101,10 @@ struct job_info * queue_get() {
 		free(head);
 		queue.num_jobs--;
 	}
+	
+	// Unlock
+	pthread_mutex_unlock(&(queue.lock));
+	
 	return job;
 }
 
@@ -91,7 +116,15 @@ int queue_size() {
 	Remove and free every element in the queue
 */
 void queue_clear() {
+#ifdef DEBUG
+	printf("[*] Queue Clear\n");
+#endif
+	
 	struct job_entry * next, * prev;
+	
+	// Lock
+	pthread_mutex_lock(&(queue.lock));
+	
 	next = queue.head;
 	prev = NULL;
 	
@@ -107,4 +140,7 @@ void queue_clear() {
 	// Set everything to NULL
 	queue.head = NULL;
 	queue.tail = NULL;
+	
+	// Unlock
+	pthread_mutex_unlock(&(queue.lock));
 }

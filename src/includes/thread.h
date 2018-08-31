@@ -9,6 +9,7 @@ enum thread_status {
 	THREAD_STATUS_STOPPED,
 	THREAD_STATUS_RUNNING,
 	THREAD_STATUS_PAUSED,
+	THREAD_STATUS_EXITED,
 };
 
 struct thread_info {
