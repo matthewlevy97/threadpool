@@ -24,6 +24,8 @@ static void execute(struct thread_info * self) {
 				// Execute function
 				(*(job->func))(job->arg);
 				free(job);
+			} else if(!(self->initial_thread)) {
+				self->status = THREAD_STATUS_STOPPED;
 			}
 			break;
 		}

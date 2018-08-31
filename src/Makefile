@@ -3,7 +3,7 @@ CFLAGS=-Wall
 INCLUDES=-Iincludes
 LIBS=-lpthread
 PROGNAME=threadpool
-SRCS=threadpool.c jobqueue.c thread.c
+SRCS=threadpool.c jobqueue.c thread.c simple_test.c
 OBJS=$(SRCS:.c=.o)
 
 # DEBUG

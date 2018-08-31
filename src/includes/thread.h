@@ -14,6 +14,7 @@ enum thread_status {
 
 struct thread_info {
 	int                 threadID;
+	char                initial_thread; // Can we remove this thread??
 	enum thread_status  status;
 	pthread_t           thread;
 };

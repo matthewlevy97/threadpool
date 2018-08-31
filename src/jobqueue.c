@@ -13,7 +13,7 @@ int queue_init() {
 	
 	if(pthread_mutex_init(&(queue.lock), NULL)) {
 #ifdef DEBUG
-		perror("[queue_init] pthread_mutex_init failed\n");
+		perror("[queue_init] pthread_mutex_init() failed\n");
 #endif
 		return -1;
 	}
